@@ -1,0 +1,36 @@
+name: Build WSL2 Kernel with SquashFS Zstd
+
+on:
+  workflow_dispatch:  # 手动触发
+  schedule:
+    - cron: '0 0 * * 1'  # 每周一自动检查
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison libssl-dev libelf-dev bc
+
+      - name: Configure kernel
+        run: |
+          cp Microsoft/config-wsl .config
+          # 开启 SquashFS Zstd 支持
+          sed -i 's/# CONFIG_SQUASHFS_ZSTD is not set/CONFIG_SQUASHFS_ZSTD=y/' .config
+          # 确保 SquashFS 本身也开启
+          sed -i 's/# CONFIG_SQUASHFS is not set/CONFIG_SQUASHFS=y/' .config || true
+          sed -i 's/CONFIG_SQUASHFS=m/CONFIG_SQUASHFS=y/' .config || true
+
+      - name: Build kernel
+        run: make -j$(nproc)
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl2-kernel-bzImage
+          path: arch/x86/boot/bzImage

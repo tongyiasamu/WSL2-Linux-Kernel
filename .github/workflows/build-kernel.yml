@@ -15,16 +15,47 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential flex bison libssl-dev libelf-dev bc
+          sudo apt-get install -y build-essential flex bison libssl-dev libelf-dev bc dwarves pkg-config
 
       - name: Configure kernel
         run: |
           cp Microsoft/config-wsl .config
-          # 开启 SquashFS Zstd 支持
-          sed -i 's/# CONFIG_SQUASHFS_ZSTD is not set/CONFIG_SQUASHFS_ZSTD=y/' .config
-          # 确保 SquashFS 本身也开启
-          sed -i 's/# CONFIG_SQUASHFS is not set/CONFIG_SQUASHFS=y/' .config || true
-          sed -i 's/CONFIG_SQUASHFS=m/CONFIG_SQUASHFS=y/' .config || true
+          # SquashFS + Zstd
+          ./scripts/config --enable CONFIG_SQUASHFS
+          ./scripts/config --enable CONFIG_SQUASHFS_ZSTD
+          ./scripts/config --enable CONFIG_SQUASHFS_4K_DEVBLK_SIZE
+          ./scripts/config --enable CONFIG_SQUASHFS_ZLIB
+          ./scripts/config --enable CONFIG_SQUASHFS_LZ4
+          ./scripts/config --enable CONFIG_SQUASHFS_LZO
+          ./scripts/config --enable CONFIG_SQUASHFS_XZ
+          ./scripts/config --enable CONFIG_SQUASHFS_XATTR
+          ./scripts/config --enable CONFIG_SQUASHFS_FILE_DIRECT
+          
+          # 并行解压（微软内核命名）
+          ./scripts/config --disable CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
+          ./scripts/config --disable CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
+          ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
+          ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU
+          ./scripts/config --enable CONFIG_SQUASHFS_COMP_CACHE_FULL
+          
+          # 内核压缩改 Zstd
+          ./scripts/config --enable CONFIG_KERNEL_ZSTD
+          ./scripts/config --disable CONFIG_KERNEL_GZIP
+          
+          # NTFS3 内置
+          ./scripts/config --enable CONFIG_NTFS3_FS
+          ./scripts/config --enable CONFIG_NTFS3_LZX_XPRESS
+          ./scripts/config --enable CONFIG_NTFS3_FS_POSIX_ACL
+          
+          # Android Binder
+          ./scripts/config --enable CONFIG_ANDROID_BINDER_IPC
+          ./scripts/config --enable CONFIG_ANDROID_BINDERFS
+          
+          # DMA-BUF Heaps
+          ./scripts/config --enable CONFIG_DMABUF_HEAPS
+          ./scripts/config --enable CONFIG_DMABUF_HEAPS_SYSTEM
+          
+          make olddefconfig
 
       - name: Build kernel
         run: make -j$(nproc)

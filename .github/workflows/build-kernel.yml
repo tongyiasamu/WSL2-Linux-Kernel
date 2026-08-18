@@ -15,7 +15,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential flex bison libssl-dev libelf-dev bc dwarves pkg-config
+          sudo apt-get install build-essential flex bison dwarves libssl-dev libelf-dev cpio qemu-utils rsync
 
       - name: Configure kernel
         run: |
@@ -34,7 +34,7 @@ jobs:
           # 并行解压（微软内核命名）
           ./scripts/config --disable CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
           ./scripts/config --disable CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
-          ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
+          # ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
           ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU
           ./scripts/config --enable CONFIG_SQUASHFS_COMP_CACHE_FULL
           
@@ -58,14 +58,21 @@ jobs:
           make olddefconfig
 
       - name: Build kernel and modules
+        env:
+          LOCALVERSION: ""
         run: |
           make -j$(nproc)
           make -j$(nproc) modules
-
-      - name: Install modules to temp dir
-        run: |
-          mkdir -p modules-out
-          make INSTALL_MOD_PATH=modules-out modules_install
+          mkdir -p modules headers perf
+          make INSTALL_MOD_PATH="$PWD/modules" modules_install
+          make INSTALL_HDR_PATH="$PWD/headers" headers_install
+          make -C tools/perf NO_JEVENTS=1 NO_JVMTI=1 NO_LIBTRACEEVENT=1 install DESTDIR="$PWD/perf" prefix=/
+          ./Microsoft/scripts/gen_artifacts_vhdx.sh \
+            "$PWD/modules" \
+            "$PWD/headers" \
+            "$PWD/perf" \
+            $(make -s kernelrelease) \
+            modules.vhdx
 
       - name: Upload kernel and modules
         uses: actions/upload-artifact@v4
@@ -73,4 +80,9 @@ jobs:
           name: wsl2-kernel-full
           path: |
             arch/x86/boot/bzImage
-            modules-out/lib/modules/
+            modules.vhdx
+
+      - name: Show artifact sizes
+        run: |
+          ls -lh arch/x86/boot/bzImage
+          ls -lh modules.vhdx

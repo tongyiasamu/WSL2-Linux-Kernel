@@ -15,7 +15,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install build-essential flex bison dwarves libssl-dev libelf-dev cpio qemu-utils rsync
+          sudo apt-get install build-essential flex bison dwarves libssl-dev libelf-dev cpio qemu-utils rsync squashfs-tools
 
       - name: Configure kernel
         run: |
@@ -65,24 +65,42 @@ jobs:
           make -j$(nproc) modules
           mkdir -p modules headers perf
           make INSTALL_MOD_PATH="$PWD/modules" modules_install
-          make INSTALL_HDR_PATH="$PWD/headers" headers_install
           make -C tools/perf NO_JEVENTS=1 NO_JVMTI=1 NO_LIBTRACEEVENT=1 install DESTDIR="$PWD/perf" prefix=/
-          ./Microsoft/scripts/gen_artifacts_vhdx.sh \
-            "$PWD/modules" \
-            "$PWD/headers" \
-            "$PWD/perf" \
-            $(make -s kernelrelease) \
-            modules.vhdx
 
-      - name: Upload kernel and modules
+      - name: Generate modules.vhdx (flat)
+        env:
+          LOCALVERSION: ""
+        run: |
+          release=$(make -s kernelrelease)
+          tmp_dir=$(mktemp -d)
+          
+          # 平铺 modules
+          staging_dir="$tmp_dir/staging"
+          mkdir -p "$staging_dir"
+          cp -r "$PWD/modules/lib/modules/$release/." "$staging_dir/"
+          rm -f "$staging_dir/build" "$staging_dir/source"
+          
+          staging_size=$(du -bs "$staging_dir" | awk '{print $1;}')
+          image_size=$((staging_size + (256 * (1 << 20))))
+          image_blocks=$((image_size / 1024))
+          inode_count=$(find "$staging_dir" | wc -l)
+          inode_count=$((inode_count + 4096))
+          
+          mke2fs -q -L '' -d "$staging_dir" -N "$inode_count" -b 1024 -t ext4 "$tmp_dir/modules.img" "$image_blocks"
+          qemu-img convert -O vhdx "$tmp_dir/modules.img" "$PWD/modules.vhdx"
+          
+          rm -rf "$tmp_dir"
+          cd "$PWD/perf"
+          mksquashfs . "../perf-$release.squashfs" -comp zstd -b 1M -Xcompression-level 22
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: wsl2-kernel-full
           path: |
             arch/x86/boot/bzImage
             modules.vhdx
+            perf-*.squashfs
 
       - name: Show artifact sizes
-        run: |
-          ls -lh arch/x86/boot/bzImage
-          ls -lh modules.vhdx
+        run: ls -lh arch/x86/boot/bzImage modules.vhdx perf-*.squashfs

@@ -57,11 +57,20 @@ jobs:
           
           make olddefconfig
 
-      - name: Build kernel
-        run: make -j$(nproc)
+      - name: Build kernel and modules
+        run: |
+          make -j$(nproc)
+          make -j$(nproc) modules
 
-      - name: Upload kernel
+      - name: Install modules to temp dir
+        run: |
+          mkdir -p modules-out
+          make INSTALL_MOD_PATH=modules-out modules_install
+
+      - name: Upload kernel and modules
         uses: actions/upload-artifact@v4
         with:
-          name: wsl2-kernel-bzImage
-          path: arch/x86/boot/bzImage
+          name: wsl2-kernel-full
+          path: |
+            arch/x86/boot/bzImage
+            modules-out/lib/modules/

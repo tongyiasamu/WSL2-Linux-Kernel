@@ -1,4 +1,4 @@
-name: Build WSL2 Kernel with SquashFS Zstd
+name: Build WSL2 Kernel
 
 on:
   workflow_dispatch:  # 手动触发
@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      LOCALVERSION: ""
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -15,7 +17,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install build-essential flex bison dwarves libssl-dev libelf-dev cpio qemu-utils rsync squashfs-tools
+          sudo apt-get install dwarves libelf-dev cpio qemu-utils squashfs-tools
 
       - name: Configure kernel
         run: |
@@ -30,68 +32,87 @@ jobs:
           ./scripts/config --enable CONFIG_SQUASHFS_XZ
           ./scripts/config --enable CONFIG_SQUASHFS_XATTR
           ./scripts/config --enable CONFIG_SQUASHFS_FILE_DIRECT
-          
-          # 并行解压（微软内核命名）
-          ./scripts/config --disable CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
+
+          # 并行解压（COMPILE只能有一个，且与BY_MOUNT互斥）
           ./scripts/config --disable CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
+          ./scripts/config --disable CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
           # ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
           ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU
           ./scripts/config --enable CONFIG_SQUASHFS_COMP_CACHE_FULL
-          
+          # 当使用BY_MOUNT的配置项
+          # ./scripts/config --enable CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
+          # ./scripts/config --enable CONFIG_SQUASHFS_DECOMP_MULTI
+          # ./scripts/config --enable CONFIG_SQUASHFS_DECOMP_MULTI_PERCPU
+          # ./scripts/config --enable CONFIG_SQUASHFS_DECOMP_SINGLE
+
           # 内核压缩改 Zstd
           ./scripts/config --enable CONFIG_KERNEL_ZSTD
           ./scripts/config --disable CONFIG_KERNEL_GZIP
-          
+
+          # 内核模块压缩
+          ./scripts/config --enable CONFIG_MODULE_COMPRESS
+          ./scripts/config --enable CONFIG_MODULE_COMPRESS_ZSTD
+
           # NTFS3 内置
           ./scripts/config --enable CONFIG_NTFS3_FS
           ./scripts/config --enable CONFIG_NTFS3_LZX_XPRESS
           ./scripts/config --enable CONFIG_NTFS3_FS_POSIX_ACL
-          
+
           # Android Binder
           ./scripts/config --enable CONFIG_ANDROID_BINDER_IPC
           ./scripts/config --enable CONFIG_ANDROID_BINDERFS
-          
+
           # DMA-BUF Heaps
           ./scripts/config --enable CONFIG_DMABUF_HEAPS
           ./scripts/config --enable CONFIG_DMABUF_HEAPS_SYSTEM
-          
+          # 禁用WLAN、蓝牙、CAN总线
+          ./scripts/config --disable CONFIG_WLAN
+          ./scripts/config --disable CONFIG_BT
+          ./scripts/config --disable CONFIG_CAN
           make olddefconfig
 
       - name: Build kernel and modules
         env:
-          LOCALVERSION: ""
+          ZSTD_CLEVEL: "19"
         run: |
           make -j$(nproc)
           make -j$(nproc) modules
-          mkdir -p modules headers perf
-          make INSTALL_MOD_PATH="$PWD/modules" modules_install
-          make -C tools/perf NO_JEVENTS=1 NO_JVMTI=1 NO_LIBTRACEEVENT=1 install DESTDIR="$PWD/perf" prefix=/
+          mkdir -p modules modules-debug perf
+          make INSTALL_MOD_PATH="modules-debug" modules_install
+          INSTALL_MOD_STRIP=1 make INSTALL_MOD_PATH="modules" modules_install
 
-      - name: Generate modules.vhdx (flat)
-        env:
-          LOCALVERSION: ""
+      - name: Build perf and strip
         run: |
           release=$(make -s kernelrelease)
-          tmp_dir=$(mktemp -d)
-          
-          # 平铺 modules
-          staging_dir="$tmp_dir/staging"
-          mkdir -p "$staging_dir"
-          cp -r "$PWD/modules/lib/modules/$release/." "$staging_dir/"
-          rm -f "$staging_dir/build" "$staging_dir/source"
-          
-          staging_size=$(du -bs "$staging_dir" | awk '{print $1;}')
-          image_size=$((staging_size + (256 * (1 << 20))))
-          image_blocks=$((image_size / 1024))
-          inode_count=$(find "$staging_dir" | wc -l)
-          inode_count=$((inode_count + 4096))
-          
-          mke2fs -q -L '' -d "$staging_dir" -N "$inode_count" -b 1024 -t ext4 "$tmp_dir/modules.img" "$image_blocks"
-          qemu-img convert -O vhdx "$tmp_dir/modules.img" "$PWD/modules.vhdx"
-          
-          rm -rf "$tmp_dir"
-          cd "$PWD/perf"
-          mksquashfs . "../perf-$release.squashfs" -comp zstd -b 1M -Xcompression-level 22
+          make -j$(nproc) -C tools/perf NO_JEVENTS=1 NO_JVMTI=1 NO_LIBTRACEEVENT=1 install DESTDIR="perf" prefix=/
+
+          for f in "perf/bin/"* "perf/libexec/perf-core/dlfilters/"*.so; do
+            [ -f "$f" ] && strip --strip-debug "$f" 2>/dev/null || true
+          done
+
+          cd "perf"
+          mksquashfs . "../perf-$release.sqfs" -comp zstd -b 1M -Xcompression-level 22
+
+      - name: Generate modules.vhdx (flat)
+        run: |
+          release=$(make -s kernelrelease)
+          for variant in modules modules-debug; do
+            tmp_dir=$(mktemp -d)
+            staging_dir="$tmp_dir/staging"
+            mkdir -p "$staging_dir"
+            cp -r "$variant/lib/modules/$release/." "$staging_dir/"
+            rm -f "$staging_dir/build" "$staging_dir/source"
+
+            staging_size=$(du -bs "$staging_dir" | awk '{print $1;}')
+            image_size=$((staging_size + (256 * (1 << 20))))
+            image_blocks=$((image_size / 1024))
+            inode_count=$(find "$staging_dir" | wc -l)
+            inode_count=$((inode_count + 4096))
+
+            mke2fs -q -L '' -d "$staging_dir" -N "$inode_count" -b 1024 -t ext4 "$tmp_dir/$variant.img" "$image_blocks"
+            qemu-img convert -O vhdx "$tmp_dir/$variant.img" "$variant.vhdx"
+            rm -rf "$tmp_dir"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -100,7 +121,19 @@ jobs:
           path: |
             arch/x86/boot/bzImage
             modules.vhdx
-            perf-*.squashfs
+            perf-*.sqfs
+
+      - name: Upload modules-debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl2-modules-debug
+          path: modules-debug.vhdx
+
+      - name: Upload vmlinux
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl2-vmlinux
+          path: vmlinux
 
       - name: Show artifact sizes
-        run: ls -lh arch/x86/boot/bzImage modules.vhdx perf-*.squashfs
+        run: ls -lh arch/x86/boot/bzImage modules.vhdx perf-*.sqfs modules-debug.vhdx vmlinux

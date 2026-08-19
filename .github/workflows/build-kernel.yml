@@ -77,20 +77,20 @@ jobs:
         run: |
           make -j$(nproc)
           make -j$(nproc) modules
-          mkdir -p modules modules-debug perf
-          make INSTALL_MOD_PATH="modules-debug" modules_install
-          INSTALL_MOD_STRIP=1 make INSTALL_MOD_PATH="modules" modules_install
+          mkdir -p modules modules-debug
+          make INSTALL_MOD_PATH="$PWD/modules-debug" modules_install
+          INSTALL_MOD_STRIP=1 make INSTALL_MOD_PATH="$PWD/modules" modules_install
 
       - name: Build perf and strip
         run: |
           release=$(make -s kernelrelease)
-          make -j$(nproc) -C tools/perf NO_JEVENTS=1 NO_JVMTI=1 NO_LIBTRACEEVENT=1 install DESTDIR="perf" prefix=/
+          make -j$(nproc) -C tools/perf NO_JEVENTS=1 NO_JVMTI=1 NO_LIBTRACEEVENT=1 install DESTDIR="$PWD/perf" prefix=/
 
           for f in "perf/bin/"* "perf/libexec/perf-core/dlfilters/"*.so; do
             [ -f "$f" ] && strip --strip-debug "$f" 2>/dev/null || true
           done
 
-          cd "perf"
+          cd perf
           mksquashfs . "../perf-$release.sqfs" -comp zstd -b 1M -Xcompression-level 22
 
       - name: Generate modules.vhdx (flat)

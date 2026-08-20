@@ -52,6 +52,7 @@ jobs:
           # 内核模块压缩
           ./scripts/config --enable CONFIG_MODULE_COMPRESS
           ./scripts/config --enable CONFIG_MODULE_COMPRESS_ZSTD
+          ./scripts/config --enable CONFIG_MODULE_DECOMPRESS
 
           # NTFS3 内置
           ./scripts/config --enable CONFIG_NTFS3_FS

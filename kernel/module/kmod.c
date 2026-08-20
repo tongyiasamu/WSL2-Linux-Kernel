@@ -79,14 +79,18 @@ static int call_modprobe(char *orig_module_name, int wait)
 	};
 	char *module_name;
 	int ret;
-
+	printk(KERN_INFO "KMOD_DBG: call_modprobe(%s) wait=%d modprobe_path=%s\n",
+	       orig_module_name, wait, modprobe_path);
 	char **argv = kmalloc(sizeof(char *[5]), GFP_KERNEL);
-	if (!argv)
+	if (!argv){
+		printk(KERN_INFO "KMOD_DBG: kmalloc argv failed for %s\n", orig_module_name);
 		goto out;
-
+	}
 	module_name = kstrdup(orig_module_name, GFP_KERNEL);
-	if (!module_name)
+	if (!module_name){
+		printk(KERN_INFO "KMOD_DBG: kstrdup failed for %s\n", orig_module_name);
 		goto free_argv;
+	}
 
 	argv[0] = modprobe_path;
 	argv[1] = "-q";
@@ -96,10 +100,16 @@ static int call_modprobe(char *orig_module_name, int wait)
 
 	info = call_usermodehelper_setup(modprobe_path, argv, envp, GFP_KERNEL,
 					 NULL, free_modprobe_argv, NULL);
-	if (!info)
+	if (!info) {
+		printk(KERN_INFO "KMOD_DBG: call_usermodehelper_setup failed for %s\n",
+		       orig_module_name);
 		goto free_module_name;
-
+	}
+	printk(KERN_INFO "KMOD_DBG: calling call_usermodehelper_exec(%s)\n",
+	       orig_module_name);
 	ret = call_usermodehelper_exec(info, wait | UMH_KILLABLE);
+	printk(KERN_INFO "KMOD_DBG: call_usermodehelper_exec(%s) returned %d\n",
+	       orig_module_name, ret);
 	kmod_dup_request_announce(orig_module_name, ret);
 	return ret;
 
@@ -150,15 +160,18 @@ int __request_module(bool wait, const char *fmt, ...)
 	va_end(args);
 	if (ret >= MODULE_NAME_LEN)
 		return -ENAMETOOLONG;
-
+	printk(KERN_INFO "KMOD_DBG: __request_module(%s) wait=%d caller=%pS\n",
+	       module_name, wait, (void *)_RET_IP_);
 	ret = security_kernel_module_request(module_name);
-	if (ret)
+	if (ret){
+		printk(KERN_INFO "KMOD_DBG: security_kernel_module_request(%s) blocked, ret=%d\n",  module_name, ret);
 		return ret;
-
+	}
 	ret = down_timeout(&kmod_concurrent_max, MAX_KMOD_ALL_BUSY_TIMEOUT * HZ);
 	if (ret) {
 		pr_warn_ratelimited("request_module: modprobe %s cannot be processed, kmod busy with %d threads for more than %d seconds now",
 				    module_name, MAX_KMOD_CONCURRENT, MAX_KMOD_ALL_BUSY_TIMEOUT);
+		printk(KERN_INFO "KMOD_DBG: down_timeout failed for %s, ret=%d\n", module_name, ret);
 		return ret;
 	}
 
@@ -166,11 +179,12 @@ int __request_module(bool wait, const char *fmt, ...)
 
 	if (kmod_dup_request_exists_wait(module_name, wait, &dup_ret)) {
 		ret = dup_ret;
+		printk(KERN_INFO "KMOD_DBG: dup_request for %s, ret=%d\n", module_name, ret);
 		goto out;
 	}
-
+        printk(KERN_INFO "KMOD_DBG: calling call_modprobe(%s)\n", module_name);
 	ret = call_modprobe(module_name, wait ? UMH_WAIT_PROC : UMH_WAIT_EXEC);
-
+        printk(KERN_INFO "KMOD_DBG: call_modprobe(%s) returned %d\n", module_name, ret);
 out:
 	up(&kmod_concurrent_max);
 

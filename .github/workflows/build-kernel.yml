@@ -22,54 +22,60 @@ jobs:
       - name: Configure kernel
         run: |
           cp Microsoft/config-wsl .config
-          # SquashFS + Zstd
-          ./scripts/config --enable CONFIG_SQUASHFS
-          ./scripts/config --enable CONFIG_SQUASHFS_ZSTD
-          ./scripts/config --enable CONFIG_SQUASHFS_4K_DEVBLK_SIZE
-          ./scripts/config --enable CONFIG_SQUASHFS_ZLIB
-          ./scripts/config --enable CONFIG_SQUASHFS_LZ4
-          ./scripts/config --enable CONFIG_SQUASHFS_LZO
-          ./scripts/config --enable CONFIG_SQUASHFS_XZ
-          ./scripts/config --enable CONFIG_SQUASHFS_XATTR
-          ./scripts/config --enable CONFIG_SQUASHFS_FILE_DIRECT
-
+          # SquashFS
+          ./scripts/config -e CONFIG_SQUASHFS
+          ./scripts/config -e CONFIG_SQUASHFS_ZSTD
+          ./scripts/config -e CONFIG_SQUASHFS_4K_DEVBLK_SIZE
+          ./scripts/config -e CONFIG_SQUASHFS_ZLIB
+          ./scripts/config -e CONFIG_SQUASHFS_LZ4
+          ./scripts/config -e CONFIG_SQUASHFS_LZO
+          ./scripts/config -e CONFIG_SQUASHFS_XZ
+          ./scripts/config -e CONFIG_SQUASHFS_XATTR
+          ./scripts/config -e CONFIG_SQUASHFS_FILE_DIRECT
+          ./scripts/config -e CONFIG_SQUASHFS_COMP_CACHE_FULL
           # 并行解压（COMPILE只能有一个，且与BY_MOUNT互斥）
-          ./scripts/config --disable CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
-          ./scripts/config --disable CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
-          # ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
-          ./scripts/config --enable CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU
-          ./scripts/config --enable CONFIG_SQUASHFS_COMP_CACHE_FULL
+          ./scripts/config -d CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
+          ./scripts/config -d CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
+          # ./scripts/config -e CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
+          ./scripts/config -e CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU
           # 当使用BY_MOUNT的配置项
-          # ./scripts/config --enable CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
-          # ./scripts/config --enable CONFIG_SQUASHFS_DECOMP_MULTI
-          # ./scripts/config --enable CONFIG_SQUASHFS_DECOMP_MULTI_PERCPU
-          # ./scripts/config --enable CONFIG_SQUASHFS_DECOMP_SINGLE
+          # ./scripts/config -e CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
+          # ./scripts/config -e CONFIG_SQUASHFS_DECOMP_MULTI
+          # ./scripts/config -e CONFIG_SQUASHFS_DECOMP_MULTI_PERCPU
+          # ./scripts/config -e CONFIG_SQUASHFS_DECOMP_SINGLE
 
           # 内核压缩改 Zstd
-          ./scripts/config --enable CONFIG_KERNEL_ZSTD
-          ./scripts/config --disable CONFIG_KERNEL_GZIP
+          ./scripts/config -e CONFIG_KERNEL_ZSTD
+          ./scripts/config -d CONFIG_KERNEL_GZIP
 
           # 内核模块压缩
-          ./scripts/config --enable CONFIG_MODULE_COMPRESS
-          ./scripts/config --enable CONFIG_MODULE_COMPRESS_ZSTD
-          ./scripts/config --enable CONFIG_MODULE_DECOMPRESS
+          ./scripts/config -e CONFIG_MODULE_COMPRESS
+          ./scripts/config -e CONFIG_MODULE_COMPRESS_ZSTD
+          ./scripts/config -e CONFIG_MODULE_DECOMPRESS
 
           # NTFS3 内置
-          ./scripts/config --enable CONFIG_NTFS3_FS
-          ./scripts/config --enable CONFIG_NTFS3_LZX_XPRESS
-          ./scripts/config --enable CONFIG_NTFS3_FS_POSIX_ACL
+          ./scripts/config -e CONFIG_NTFS3_FS
+          ./scripts/config -e CONFIG_NTFS3_LZX_XPRESS
+          ./scripts/config -e CONFIG_NTFS3_FS_POSIX_ACL
 
+          # EROFS
+          ./scripts/config -e CONFIG_EROFS_FS
+          ./scripts/config -e CONFIG_EROFS_FS_ZIP_LZMA
+          ./scripts/config -e CONFIG_EROFS_FS_ZIP_DEFLATE
+          ./scripts/config -e CONFIG_EROFS_FS_ZIP_ZSTD
+          ./scripts/config -e CONFIG_EROFS_FS_ZIP_ACCEL
+          ./scripts/config -e CONFIG_EROFS_FS_PCPU_KTHREAD
           # Android Binder
-          ./scripts/config --enable CONFIG_ANDROID_BINDER_IPC
-          ./scripts/config --enable CONFIG_ANDROID_BINDERFS
+          ./scripts/config -e CONFIG_ANDROID_BINDER_IPC
+          ./scripts/config -e CONFIG_ANDROID_BINDERFS
 
           # DMA-BUF Heaps
-          ./scripts/config --enable CONFIG_DMABUF_HEAPS
-          ./scripts/config --enable CONFIG_DMABUF_HEAPS_SYSTEM
+          ./scripts/config -e CONFIG_DMABUF_HEAPS
+          ./scripts/config -e CONFIG_DMABUF_HEAPS_SYSTEM
           # 禁用WLAN、蓝牙、CAN总线
-          ./scripts/config --disable CONFIG_WLAN
-          ./scripts/config --disable CONFIG_BT
-          ./scripts/config --disable CONFIG_CAN
+          ./scripts/config -d CONFIG_WLAN
+          ./scripts/config -d CONFIG_BT
+          ./scripts/config -d CONFIG_CAN
           make olddefconfig
 
       - name: Build kernel and modules
@@ -77,7 +83,6 @@ jobs:
           ZSTD_CLEVEL: "19"
         run: |
           make -j$(nproc)
-          make -j$(nproc) modules
           mkdir -p modules modules-debug
           make INSTALL_MOD_PATH="$PWD/modules-debug" modules_install
           INSTALL_MOD_STRIP=1 make INSTALL_MOD_PATH="$PWD/modules" modules_install
@@ -105,13 +110,15 @@ jobs:
             rm -f "$staging_dir/build" "$staging_dir/source"
 
             staging_size=$(du -bs "$staging_dir" | awk '{print $1;}')
-            image_size=$((staging_size + (256 * (1 << 20))))
+            image_size=$((staging_size + (16 * (1 << 20))))
             image_blocks=$((image_size / 1024))
-            inode_count=$(find "$staging_dir" | wc -l)
-            inode_count=$((inode_count + 4096))
+            inode_count=$(($(find "$staging_dir" -printf '\n'| wc -l) + 4096))
 
-            mke2fs -q -L '' -d "$staging_dir" -N "$inode_count" -b 1024 -t ext4 "$tmp_dir/$variant.img" "$image_blocks"
-            qemu-img convert -O vhdx "$tmp_dir/$variant.img" "$variant.vhdx"
+            mke2fs -q -L '' -m 0 -O ^has_journal -d "$staging_dir" -N "$inode_count" -b 1024 -t ext4 "$tmp_dir/$variant.img" "$image_blocks"
+            debugfs -w "$tmp_dir/$variant.img" -R "rmdir /lost+found"
+            qemu-img convert -O vhdx -o block_size=1M "$tmp_dir/$variant.img" "$variant.vhdx"
+            # Action下载界面会使用zip，这里就不压缩了
+            tar -cSf "variant.tar" --remove-files "$variant.vhdx"
             rm -rf "$tmp_dir"
           done
 
@@ -121,14 +128,14 @@ jobs:
           name: wsl2-kernel-full
           path: |
             arch/x86/boot/bzImage
-            modules.vhdx
+            modules.tar
             perf-*.sqfs
 
       - name: Upload modules-debug
         uses: actions/upload-artifact@v4
         with:
           name: wsl2-modules-debug
-          path: modules-debug.vhdx
+          path: modules-debug.tar
 
       - name: Upload vmlinux
         uses: actions/upload-artifact@v4
@@ -137,4 +144,4 @@ jobs:
           path: vmlinux
 
       - name: Show artifact sizes
-        run: ls -lh arch/x86/boot/bzImage modules.vhdx perf-*.sqfs modules-debug.vhdx vmlinux
+        run: ls -lh arch/x86/boot/bzImage modules.tar perf-*.sqfs modules-debug.tar vmlinux

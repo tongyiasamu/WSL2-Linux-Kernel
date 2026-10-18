@@ -22,60 +22,63 @@ jobs:
       - name: Configure kernel
         run: |
           cp Microsoft/config-wsl .config
-          # SquashFS
-          ./scripts/config -e CONFIG_SQUASHFS
-          ./scripts/config -e CONFIG_SQUASHFS_ZSTD
-          ./scripts/config -e CONFIG_SQUASHFS_4K_DEVBLK_SIZE
-          ./scripts/config -e CONFIG_SQUASHFS_ZLIB
-          ./scripts/config -e CONFIG_SQUASHFS_LZ4
-          ./scripts/config -e CONFIG_SQUASHFS_LZO
-          ./scripts/config -e CONFIG_SQUASHFS_XZ
-          ./scripts/config -e CONFIG_SQUASHFS_XATTR
-          ./scripts/config -e CONFIG_SQUASHFS_FILE_DIRECT
-          ./scripts/config -e CONFIG_SQUASHFS_COMP_CACHE_FULL
-          # 并行解压（COMPILE只能有一个，且与BY_MOUNT互斥）
-          ./scripts/config -d CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
-          ./scripts/config -d CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
-          # ./scripts/config -e CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
-          ./scripts/config -e CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU
-          # 当使用BY_MOUNT的配置项
-          # ./scripts/config -e CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
-          # ./scripts/config -e CONFIG_SQUASHFS_DECOMP_MULTI
-          # ./scripts/config -e CONFIG_SQUASHFS_DECOMP_MULTI_PERCPU
-          # ./scripts/config -e CONFIG_SQUASHFS_DECOMP_SINGLE
+          opts=(
+            # SquashFS
+            -e CONFIG_SQUASHFS
+            -e CONFIG_SQUASHFS_ZSTD
+            -e CONFIG_SQUASHFS_4K_DEVBLK_SIZE
+            -e CONFIG_SQUASHFS_ZLIB
+            -e CONFIG_SQUASHFS_LZ4
+            -e CONFIG_SQUASHFS_LZO
+            -e CONFIG_SQUASHFS_XZ
+            -e CONFIG_SQUASHFS_XATTR
+            -e CONFIG_SQUASHFS_FILE_DIRECT
+            -e CONFIG_SQUASHFS_COMP_CACHE_FULL
+            # 并行解压（COMPILE只能有一个，且与BY_MOUNT互斥）
+            -d CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
+            -d CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE
+            # -e CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI
+            -e CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU
+            # 当使用BY_MOUNT的配置项
+            # -e CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT
+            # -e CONFIG_SQUASHFS_DECOMP_MULTI
+            # -e CONFIG_SQUASHFS_DECOMP_MULTI_PERCPU
+            # -e CONFIG_SQUASHFS_DECOMP_SINGLE
 
-          # 内核压缩改 Zstd
-          ./scripts/config -e CONFIG_KERNEL_ZSTD
-          ./scripts/config -d CONFIG_KERNEL_GZIP
+            # 内核压缩改 Zstd
+            -e CONFIG_KERNEL_ZSTD
+            -d CONFIG_KERNEL_GZIP
 
-          # 内核模块压缩
-          ./scripts/config -e CONFIG_MODULE_COMPRESS
-          ./scripts/config -e CONFIG_MODULE_COMPRESS_ZSTD
-          ./scripts/config -e CONFIG_MODULE_DECOMPRESS
+            # 内核模块压缩
+            -e CONFIG_MODULE_COMPRESS
+            -e CONFIG_MODULE_COMPRESS_ZSTD
+            -e CONFIG_MODULE_DECOMPRESS
 
-          # NTFS3 内置
-          ./scripts/config -e CONFIG_NTFS3_FS
-          ./scripts/config -e CONFIG_NTFS3_LZX_XPRESS
-          ./scripts/config -e CONFIG_NTFS3_FS_POSIX_ACL
+            # NTFS3 内置
+            -e CONFIG_NTFS3_FS
+            -e CONFIG_NTFS3_LZX_XPRESS
+            -e CONFIG_NTFS3_FS_POSIX_ACL
 
-          # EROFS
-          ./scripts/config -e CONFIG_EROFS_FS
-          ./scripts/config -e CONFIG_EROFS_FS_ZIP_LZMA
-          ./scripts/config -e CONFIG_EROFS_FS_ZIP_DEFLATE
-          ./scripts/config -e CONFIG_EROFS_FS_ZIP_ZSTD
-          ./scripts/config -e CONFIG_EROFS_FS_ZIP_ACCEL
-          ./scripts/config -e CONFIG_EROFS_FS_PCPU_KTHREAD
-          # Android Binder
-          ./scripts/config -e CONFIG_ANDROID_BINDER_IPC
-          ./scripts/config -e CONFIG_ANDROID_BINDERFS
+            # EROFS
+            -e CONFIG_EROFS_FS
+            -e CONFIG_EROFS_FS_ZIP_LZMA
+            -e CONFIG_EROFS_FS_ZIP_DEFLATE
+            -e CONFIG_EROFS_FS_ZIP_ZSTD
+            -e CONFIG_EROFS_FS_ZIP_ACCEL
+            -e CONFIG_EROFS_FS_PCPU_KTHREAD
+            # Android Binder
+            -e CONFIG_ANDROID_BINDER_IPC
+            -e CONFIG_ANDROID_BINDERFS
 
-          # DMA-BUF Heaps
-          ./scripts/config -e CONFIG_DMABUF_HEAPS
-          ./scripts/config -e CONFIG_DMABUF_HEAPS_SYSTEM
-          # 禁用WLAN、蓝牙、CAN总线
-          ./scripts/config -d CONFIG_WLAN
-          ./scripts/config -d CONFIG_BT
-          ./scripts/config -d CONFIG_CAN
+            # DMA-BUF Heaps
+            -e CONFIG_DMABUF_HEAPS
+            -e CONFIG_DMABUF_HEAPS_SYSTEM
+            # 禁用WLAN、蓝牙、CAN总线
+            -d CONFIG_WLAN
+            -d CONFIG_BT
+            -d CONFIG_CAN
+          )
+          ./scripts/config "${opts[@]}"
           make olddefconfig
 
       - name: Build kernel and modules
@@ -118,7 +121,7 @@ jobs:
             debugfs -w "$tmp_dir/$variant.img" -R "rmdir /lost+found"
             qemu-img convert -O vhdx -o block_size=1M "$tmp_dir/$variant.img" "$variant.vhdx"
             # Action下载界面会使用zip，这里就不压缩了
-            tar -cSf "variant.tar" --remove-files "$variant.vhdx"
+            tar -cSf "$variant.tar" --remove-files "$variant.vhdx"
             rm -rf "$tmp_dir"
           done
 

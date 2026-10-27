@@ -106,83 +106,9 @@ static int call_usermodehelper_exec_async(void *data)
 	commit_creds(new);
 
 	wait_for_initramfs();
-	if (sub_info->path && !strcmp(sub_info->path, "/sbin/modprobe")) {
-		printk("before kernel_execve\n");
-		if (init_task.fs) {
-			printk("KMOD_DBG: init fs root mnt=%p dentry=%p\n",
-				init_task.fs->root.mnt, init_task.fs->root.dentry);
-		}
-		if (current->fs) {
-			printk("KMOD_DBG: umh current fs root mnt=%p dentry=%p\n",
-				current->fs->root.mnt, current->fs->root.dentry);
-		} else {
-			printk("KMOD_DBG: umh current fs is NULL\n");
-		}
-		struct file *f = filp_open("/sbin/modprobe", O_RDONLY, 0);
-		if (!IS_ERR(f)) {
-			char buf[4];
-			loff_t pos = 0;
-			kernel_read(f, buf, 4, &pos);
-			printk("KMOD_DBG: initns modprobe magic=%02x %02x %02x %02x\n",
-				buf[0], buf[1], buf[2], buf[3]);
-			filp_close(f, NULL);
-		} else {
-			printk("KMOD_DBG: initns modprobe open err=%ld\n", PTR_ERR(f));
-		}
-		f = filp_open("/bin/bash", O_RDONLY, 0);
-		if (!IS_ERR(f)) {
-			char buf[4];
-			loff_t pos = 0;
-			kernel_read(f, buf, 4, &pos);
-			printk("KMOD_DBG: initns modprobe magic=%02x %02x %02x %02x\n",
-				buf[0], buf[1], buf[2], buf[3]);
-			filp_close(f, NULL);
-		} else {
-			printk("KMOD_DBG: initns modprobe open err=%ld\n", PTR_ERR(f));
-		}
-	}
 	retval = kernel_execve(sub_info->path,
 			       (const char *const *)sub_info->argv,
 			       (const char *const *)sub_info->envp);
-	if (sub_info->path && !strcmp(sub_info->path, "/sbin/modprobe")) {
-		printk("after kernel_execve\n");
-		if (init_task.fs) {
-			printk("KMOD_DBG: init fs root mnt=%p dentry=%p\n",
-				init_task.fs->root.mnt, init_task.fs->root.dentry);
-		}
-		if (current->fs) {
-			printk("KMOD_DBG: umh current fs root mnt=%p dentry=%p\n",
-				current->fs->root.mnt, current->fs->root.dentry);
-		} else {
-			printk("KMOD_DBG: umh current fs is NULL\n");
-		}
-		struct file *f = filp_open("/sbin/modprobe", O_RDONLY, 0);
-		if (!IS_ERR(f)) {
-			char buf[4];
-			loff_t pos = 0;
-			kernel_read(f, buf, 4, &pos);
-			printk("KMOD_DBG: initns modprobe magic=%02x %02x %02x %02x\n",
-				buf[0], buf[1], buf[2], buf[3]);
-			filp_close(f, NULL);
-		} else {
-			printk("KMOD_DBG: initns modprobe open err=%ld\n", PTR_ERR(f));
-		}
-		f = filp_open("/bin/bash", O_RDONLY, 0);
-		if (!IS_ERR(f)) {
-			char buf[4];
-			loff_t pos = 0;
-			kernel_read(f, buf, 4, &pos);
-			printk("KMOD_DBG: initns modprobe magic=%02x %02x %02x %02x\n",
-				buf[0], buf[1], buf[2], buf[3]);
-			filp_close(f, NULL);
-		} else {
-			printk("KMOD_DBG: initns modprobe open err=%ld\n", PTR_ERR(f));
-		}
-	}
-	printk(KERN_INFO "KMOD_DBG: execve path=%s retval=%d root mnt=%px dentry=%px\n",
-       sub_info->path, retval,
-       current->fs->root.mnt,
-       current->fs->root.dentry);
 out:
 	sub_info->retval = retval;
 	/*

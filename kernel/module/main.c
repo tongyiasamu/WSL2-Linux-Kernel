@@ -3707,8 +3707,23 @@ static int init_module_from_file(struct file *f, const char __user * uargs, int 
 			return err;
 		}
 	} else {
-		info.hdr = buf;
-		info.len = len;
+		/* WSL workaround: 用户空间没设标志时，内核自己检测压缩格式
+		 * WSL默认的系统发行版中kmod/modprobe没有+ZSTD，因此这里自行判定
+		 */
+		if (len >= 4 &&
+			(((u8 *)buf)[0] == 0x28 && ((u8 *)buf)[1] == 0xb5 &&
+				((u8 *)buf)[2] == 0x2f && ((u8 *)buf)[3] == 0xfd)) {
+			int err = module_decompress(&info, buf, len);
+			vfree(buf);
+			if (err) {
+				mod_stat_inc(&failed_decompress);
+				mod_stat_add_long(len, &invalid_decompress_bytes);
+				return err;
+			}
+		} else {
+			info.hdr = buf;
+			info.len = len;
+		}
 	}
 
 	return load_module(&info, uargs, flags);

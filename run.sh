@@ -69,11 +69,9 @@ INSTALL_MOD_STRIP=1 make INSTALL_MOD_PATH="$PWD/modules" modules_install
 
 release=$(make -s kernelrelease)
 # make -j$(nproc) -C tools/perf NO_JEVENTS=1 NO_JVMTI=1 NO_LIBTRACEEVENT=1 install DESTDIR="$PWD/perf" prefix=/
-# 
 # for f in "perf/bin/"* "perf/libexec/perf-core/dlfilters/"*.so; do
 #   [ -f "$f" ] && strip --strip-debug "$f" 2>/dev/null || true
 # done
-# 
 # cd perf
 # mksquashfs . "../perf-$release.sqfs" -comp zstd -b 1M -Xcompression-level 22
 
@@ -95,7 +93,7 @@ for variant in modules modules-debug; do
   qemu-img convert -O vhdx -o block_size=1M "$tmp_dir/$variant.img" "$variant.vhdx"
   rm -rf "$tmp_dir"
 done
-cp -f arch/x86/boot/bzImage .
+ln -f arch/x86/boot/bzImage .
 # 分开执行以保留大小信息
 tar -cvSf kernel.tar modules.vhdx modules-debug.vhdx vmlinux bzImage
 rm bzImage

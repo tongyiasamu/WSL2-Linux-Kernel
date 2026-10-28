@@ -89,6 +89,7 @@ jobs:
           mkdir -p modules modules-debug
           make INSTALL_MOD_PATH="$PWD/modules-debug" modules_install
           INSTALL_MOD_STRIP=1 make INSTALL_MOD_PATH="$PWD/modules" modules_install
+          ln arch/x86/boot/bzImage .
 
       - name: Build perf and strip
         run: |
@@ -130,7 +131,7 @@ jobs:
         with:
           name: wsl2-kernel-full
           path: |
-            arch/x86/boot/bzImage
+            bzImage
             modules.tar
             perf-*.sqfs
 
@@ -147,4 +148,4 @@ jobs:
           path: vmlinux
 
       - name: Show artifact sizes
-        run: ls -lh arch/x86/boot/bzImage modules.tar perf-*.sqfs modules-debug.tar vmlinux
+        run: ls -lh bzImage modules.tar perf-*.sqfs modules-debug.tar vmlinux
